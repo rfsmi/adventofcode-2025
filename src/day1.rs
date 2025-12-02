@@ -41,9 +41,9 @@ pub fn solve_2(s: &str) -> i32 {
             zeros -= 1;
         }
         dial += turn;
-        zeros += match turn {
-            ..0 => (dial - 1).div_euclid(100).abs(),
-            0.. => dial.div_euclid(100).abs(),
+        zeros += match turn.is_negative() {
+            true => (dial - 1).div_euclid(100).abs(),
+            false => dial.div_euclid(100).abs(),
         };
         dial = dial.rem_euclid(100);
     }

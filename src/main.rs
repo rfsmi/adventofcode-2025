@@ -9,7 +9,10 @@ struct Args {
     task: Task,
 }
 
-utils::make_runner!(1+,);
+utils::make_runner!(
+    1+,
+    2+,
+);
 
 fn main() {
     run(Args::parse());
