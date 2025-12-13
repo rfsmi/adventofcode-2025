@@ -19,7 +19,7 @@ utils::make_runner!(
     7+,
     8+,
     9+,
-    10,
+    10+,
 );
 
 fn main() {
