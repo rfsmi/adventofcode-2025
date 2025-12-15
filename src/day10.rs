@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, iter::zip};
 
 use nom::{
     branch::alt,
@@ -21,30 +21,26 @@ fn parse(s: &str) -> IResult<&str, Vec<(Vec<usize>, Vec<Vec<usize>>, Vec<usize>)
     many0(line)(s)
 }
 
-fn toggles<'a>(
-    target: &'a [usize],
-    buttons: &'a [Vec<usize>],
-) -> impl Iterator<Item = (usize, Vec<usize>)> + 'a {
-    (0u16..(1 << buttons.len())).filter_map(move |mask| {
-        let mut state: Vec<usize> = target.into_iter().copied().collect();
-        let mut presses = 0;
+fn parity_presses(
+    n: usize,
+    buttons: &[Vec<usize>],
+) -> HashMap<Vec<usize>, Vec<(usize, Vec<usize>)>> {
+    let mut result: HashMap<Vec<usize>, Vec<(usize, Vec<usize>)>> = HashMap::new();
+    for mask in 0u16..(1 << buttons.len()) {
+        let mut value = vec![0; n];
         for (i, button) in buttons.iter().enumerate() {
             if mask & (1 << i) == 0 {
                 continue;
             }
-            for &b in button {
-                if state[b] == 0 {
-                    return None;
-                }
-                state[b] -= 1;
+            for &j in button {
+                value[j] += 1;
             }
-            presses += 1;
         }
-        state
-            .iter()
-            .all(|&v| v % 2 == 0)
-            .then_some((presses, state))
-    })
+        let parity = value.iter().map(|v| v % 2).collect();
+        let entry = result.entry(parity).or_default();
+        entry.push((mask.count_ones() as usize, value));
+    }
+    result
 }
 
 fn bifurcate(target: Vec<usize>, buttons: Vec<Vec<usize>>) -> usize {
@@ -53,6 +49,7 @@ fn bifurcate(target: Vec<usize>, buttons: Vec<Vec<usize>>) -> usize {
         DoubleOffset { offset: usize },
         Min { state: Vec<usize>, n_nodes: usize },
     }
+    let parity_cache = parity_presses(target.len(), &buttons);
     let mut memo: HashMap<Vec<usize>, Option<usize>> = HashMap::new();
     let mut retval: Vec<Option<usize>> = Vec::new();
     let mut stack: Vec<_> = vec![DFS::Recurse {
@@ -70,10 +67,17 @@ fn bifurcate(target: Vec<usize>, buttons: Vec<Vec<usize>>) -> usize {
                     continue;
                 }
                 let top = stack.len();
-                for (offset, mut state) in toggles(&state, &buttons) {
-                    state.iter_mut().for_each(|v| *v /= 2);
-                    stack.push(DFS::DoubleOffset { offset });
-                    stack.push(DFS::Recurse { state });
+                let state_parity: Vec<_> = state.iter().map(|v| v % 2).collect();
+                if let Some(presses) = parity_cache.get(&state_parity) {
+                    for &(offset, ref adjust) in presses {
+                        if zip(adjust, &state).any(|(a, b)| a > b) {
+                            continue;
+                        }
+                        let mut state = state.clone();
+                        zip(adjust, &mut state).for_each(|(a, b)| *b = (*b - *a) / 2);
+                        stack.push(DFS::DoubleOffset { offset });
+                        stack.push(DFS::Recurse { state });
+                    }
                 }
                 let n_nodes = (stack.len() - top) / 2;
                 stack.insert(top, DFS::Min { state, n_nodes });
@@ -98,10 +102,13 @@ pub fn solve(s: &str) -> usize {
     let machines = parse(s).unwrap().1;
     machines
         .into_iter()
-        .map(|(mut target, buttons, _)| {
-            target.iter_mut().for_each(|v| *v += 100);
-            toggles(&target, &buttons)
-                .map(|(presses, _)| presses)
+        .map(|(target, buttons, _)| {
+            let combos = parity_presses(target.len(), &buttons);
+            combos
+                .get(&target)
+                .unwrap()
+                .iter()
+                .map(|&(n, _)| n)
                 .min()
                 .unwrap()
         })
